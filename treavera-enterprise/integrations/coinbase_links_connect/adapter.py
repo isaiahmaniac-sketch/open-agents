@@ -1,9 +1,9 @@
 """Read/prepare-only Coinbase boundary for Henry APEX.
 
 There is deliberately NO transaction execution method here. Any future
-execution capability must be implemented behind the APEX execution firewall,
-with a persistent ledger, structured human approval, deterministic policy and
-an independently controlled emergency stop.
+execution capability must be implemented behind the central APEX execution
+firewall, durable ledger, structured human approval, deterministic policy and
+independently controlled emergency stop.
 """
 from __future__ import annotations
 
@@ -11,7 +11,17 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
+from pathlib import Path
+import sys
 from typing import Any, Literal, Protocol
+
+# The repository's top-level directory contains a hyphen, so add the security
+# package directory explicitly rather than pretending the parent is importable.
+_SECURITY_DIR = Path(__file__).resolve().parents[2] / "security"
+if str(_SECURITY_DIR) not in sys.path:
+    sys.path.insert(0, str(_SECURITY_DIR))
+
+from authority import AuthorityDenied, EmergencyStop  # noqa: E402
 
 Operation = Literal["get_wallet_details", "get_balance", "prepare_native_transfer"]
 Mode = Literal["read", "prepare"]
@@ -43,22 +53,6 @@ class PolicyDenied(PermissionError):
     pass
 
 
-class EmergencyStop:
-    """Local fail-closed stop; the production implementation must be centralized."""
-    def __init__(self) -> None:
-        self._stopped = False
-
-    def stop(self) -> None:
-        self._stopped = True
-
-    def reset(self) -> None:
-        self._stopped = False
-
-    def assert_running(self) -> None:
-        if self._stopped:
-            raise PolicyDenied("APEX emergency stop is active")
-
-
 def idempotency_key(payload: dict[str, Any]) -> str:
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return sha256(canonical.encode("utf-8")).hexdigest()
@@ -85,6 +79,8 @@ class CoinbaseLinksConnectAdapter:
 
     def __init__(self, client: CoinbaseClient, emergency_stop: EmergencyStop | None = None):
         self.client = client
+        # The default is now the central APEX security primitive, not a
+        # connector-owned implementation. Tests may inject the same primitive.
         self.emergency_stop = emergency_stop or EmergencyStop()
 
     def wallet_details(self, authority: Authority) -> tuple[dict[str, Any], AuditEvent]:
@@ -125,7 +121,10 @@ class CoinbaseLinksConnectAdapter:
         return intent, self._audit(authority, payload, "prepared")
 
     def _allow(self, authority: Authority, operation: Operation, mode: Mode) -> None:
-        self.emergency_stop.assert_running()
+        try:
+            self.emergency_stop.assert_running()
+        except AuthorityDenied as exc:
+            raise PolicyDenied(str(exc)) from exc
         if authority.operation != operation or authority.mode != mode:
             raise PolicyDenied("authority does not exactly match the requested operation")
 
