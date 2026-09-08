@@ -1,39 +1,33 @@
-"""Governed Coinbase adapter for Henry APEX.
+"""Read/prepare-only Coinbase boundary for Henry APEX.
 
-The adapter deliberately separates data normalization from transaction execution.
-A live Coinbase/AgentKit client is injected at runtime; credentials are never
-accepted as persisted configuration.
+There is deliberately NO transaction execution method here. Any future
+execution capability must be implemented behind the APEX execution firewall,
+with a persistent ledger, structured human approval, deterministic policy and
+an independently controlled emergency stop.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
-from decimal import Decimal
 from hashlib import sha256
 import json
 from typing import Any, Literal, Protocol
 
-Operation = Literal[
-    "get_wallet_details",
-    "get_balance",
-    "native_transfer",
-]
+from treavera_enterprise.security.authority import EmergencyStop
+
+Operation = Literal["get_wallet_details", "get_balance", "prepare_native_transfer"]
+Mode = Literal["read", "prepare"]
 
 
 class CoinbaseClient(Protocol):
-    """Minimal runtime contract implemented by the Coinbase AgentKit adapter."""
-
     def get_wallet_details(self) -> Any: ...
     def get_balance(self, asset_id: str | None = None) -> Any: ...
-    def native_transfer(self, amount: str, asset_id: str, destination: str) -> Any: ...
 
 
 @dataclass(frozen=True)
 class Authority:
     operation: Operation
-    mode: Literal["read", "prepare", "execute"] = "read"
-    human_approval: bool = False
-    max_amount: Decimal | None = None
+    mode: Mode = "read"
     network: str | None = None
 
 
@@ -57,71 +51,69 @@ def idempotency_key(payload: dict[str, Any]) -> str:
 
 
 def normalize_wallet(wallet: Any) -> dict[str, Any]:
-    """Normalize provider output without assuming a single Coinbase response shape."""
+    """Return an allowlisted projection; never propagate the raw provider object."""
     if hasattr(wallet, "model_dump"):
         wallet = wallet.model_dump()
     elif hasattr(wallet, "__dict__"):
         wallet = vars(wallet)
     if not isinstance(wallet, dict):
-        return {"raw": str(wallet)}
+        return {"provider": "coinbase", "wallet_id": None, "address": None, "network": None}
     return {
         "provider": "coinbase",
         "wallet_id": wallet.get("id") or wallet.get("wallet_id"),
         "address": wallet.get("address") or wallet.get("default_address"),
         "network": wallet.get("network"),
-        "raw": wallet,
     }
 
 
 class CoinbaseLinksConnectAdapter:
-    """Henry APEX policy boundary around Coinbase AgentKit capabilities."""
-
     provider = "coinbase"
 
-    def __init__(self, client: CoinbaseClient):
+    def __init__(self, client: CoinbaseClient, emergency_stop: EmergencyStop | None = None):
         self.client = client
+        self.emergency_stop = emergency_stop or EmergencyStop()
 
     def wallet_details(self, authority: Authority) -> tuple[dict[str, Any], AuditEvent]:
-        self._allow(authority, "get_wallet_details")
+        self._allow(authority, "get_wallet_details", "read")
         result = normalize_wallet(self.client.get_wallet_details())
         return result, self._audit(authority, {"operation": "get_wallet_details"}, "ok")
 
     def balance(self, authority: Authority, asset_id: str | None = None) -> tuple[Any, AuditEvent]:
-        self._allow(authority, "get_balance")
+        self._allow(authority, "get_balance", "read")
         payload = {"operation": "get_balance", "asset_id": asset_id}
         result = self.client.get_balance(asset_id)
         return result, self._audit(authority, payload, "ok")
 
-    def native_transfer(
+    def prepare_native_transfer(
         self,
         authority: Authority,
-        amount: Decimal,
+        amount: str,
         asset_id: str,
         destination: str,
-    ) -> tuple[Any, AuditEvent]:
-        self._allow(authority, "native_transfer")
-        if authority.mode != "execute":
-            raise PolicyDenied("native_transfer must use execute mode after policy approval")
-        if not authority.human_approval:
-            raise PolicyDenied("human approval is required for native transfers")
-        if authority.max_amount is not None and amount > authority.max_amount:
-            raise PolicyDenied("transfer exceeds the APEX authority limit")
-
+    ) -> tuple[dict[str, Any], AuditEvent]:
+        """Create a non-executable intent. This method cannot move funds."""
+        self._allow(authority, "prepare_native_transfer", "prepare")
+        if not amount or not asset_id or not destination:
+            raise PolicyDenied("transfer intent requires amount, asset and destination")
         payload = {
-            "operation": "native_transfer",
-            "amount": str(amount),
+            "operation": "prepare_native_transfer",
+            "amount": amount,
             "asset_id": asset_id,
             "destination": destination,
             "network": authority.network,
         }
-        result = self.client.native_transfer(str(amount), asset_id, destination)
-        return result, self._audit(authority, payload, "ok")
+        intent = {
+            "status": "PREPARED_ONLY",
+            "executable": False,
+            "request_fingerprint": idempotency_key(payload),
+            **payload,
+        }
+        return intent, self._audit(authority, payload, "prepared")
 
-    def _allow(self, authority: Authority, operation: Operation) -> None:
-        if authority.operation != operation:
-            raise PolicyDenied(f"authority permits {authority.operation}, not {operation}")
-        if authority.mode not in {"read", "prepare", "execute"}:
-            raise PolicyDenied("invalid authority mode")
+    def _allow(self, authority: Authority, operation: Operation, mode: Mode) -> None:
+        self.emergency_stop.assert_running()
+        if authority.operation != operation or authority.mode != mode:
+            raise PolicyDenied("authority does not exactly match the requested operation")
 
     @staticmethod
     def _audit(authority: Authority, payload: dict[str, Any], result: str) -> AuditEvent:
