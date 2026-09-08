@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0.0",
+  "jurisdiction": "NZ",
+  "mode": "compliance_by_design",
+  "fail_closed": true,
+  "controls": {
+    "privacy_impact_assessment": "required_when_personal_information_is_processed",
+    "indirect_collection_ipp3a": "applicability_check_required",
+    "data_provenance": "required",
+    "purpose_and_access_control": "required",
+    "human_oversight": "required_for_consequential_actions",
+    "production_human_acceptance": "required",
+    "production_approval": "required",
+    "audit_evidence": "required",
+    "continuous_drift_monitoring": "required",
+    "provider_terms_review": "required"
+  },
+  "release_rule": "missing_or_stale_mandatory_control_blocks_production"
+}
