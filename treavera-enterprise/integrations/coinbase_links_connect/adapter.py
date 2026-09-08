@@ -13,8 +13,6 @@ from hashlib import sha256
 import json
 from typing import Any, Literal, Protocol
 
-from treavera_enterprise.security.authority import EmergencyStop
-
 Operation = Literal["get_wallet_details", "get_balance", "prepare_native_transfer"]
 Mode = Literal["read", "prepare"]
 
@@ -43,6 +41,22 @@ class AuditEvent:
 
 class PolicyDenied(PermissionError):
     pass
+
+
+class EmergencyStop:
+    """Local fail-closed stop; the production implementation must be centralized."""
+    def __init__(self) -> None:
+        self._stopped = False
+
+    def stop(self) -> None:
+        self._stopped = True
+
+    def reset(self) -> None:
+        self._stopped = False
+
+    def assert_running(self) -> None:
+        if self._stopped:
+            raise PolicyDenied("APEX emergency stop is active")
 
 
 def idempotency_key(payload: dict[str, Any]) -> str:
