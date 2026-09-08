@@ -1,0 +1,32 @@
+{
+  "integration": "henry-apex.coinbase.links-connect",
+  "version": "0.2.0",
+  "jurisdiction": "NZ",
+  "provider": "coinbase",
+  "fabric": "links-connect",
+  "system_of_record": "coinbase",
+  "apex_responsibilities": ["authority", "policy", "orchestration", "provenance", "audit", "human_oversight"],
+  "default_mode": "read",
+  "production_allowed": false,
+  "operations": {
+    "get_wallet_details": {"risk": "low", "mode": "read"},
+    "get_balance": {"risk": "low", "mode": "read"},
+    "prepare_native_transfer": {"risk": "high", "mode": "prepare", "executable": false, "human_review": true}
+  },
+  "live_transaction_execution": "DISABLED",
+  "financial_projections": {
+    "portfolio_dividend_tracker": "reference_only",
+    "wlthy": "reference_only",
+    "clofin": "reference_only"
+  },
+  "secret_policy": "runtime_secret_store_only",
+  "data_policy": "allowlisted_projections_only",
+  "idempotency": "sha256-canonical-request; persistent-ledger-required-for-execution",
+  "audit": "required",
+  "emergency_stop": "required",
+  "nz_compliance": {
+    "privacy_act_2020": "applicable_when_personal_information_is_processed",
+    "ipp3a": "applicability_check_required_for_indirect_collection",
+    "privacy_impact_assessment": "required_before_personal_information_use"
+  }
+}
