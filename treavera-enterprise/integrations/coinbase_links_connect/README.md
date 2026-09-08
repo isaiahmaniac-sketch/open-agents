@@ -1,31 +1,33 @@
-# Henry APEX — Coinbase ↔ Links Connect Adapter
+# Henry APEX — Coinbase ↔ Links Connect
 
-This module defines the governed integration boundary between Henry APEX, Links Connect, and Coinbase Developer Platform / AgentKit.
+## Status: HOLD / READ + PREPARE ONLY
 
-## Responsibility
+This integration is intentionally **not production-enabled**. It provides a governed NZ-only boundary for Coinbase data while preventing the adapter from executing transfers.
 
-- **Links Connect:** integration/data-fabric boundary.
-- **Coinbase CDP / AgentKit:** wallet and onchain capabilities.
-- **Henry APEX:** authority, policy, orchestration, provenance, audit.
+### Architecture
+
+- **Coinbase / AgentKit:** provider capability and wallet data.
+- **Links Connect:** integration/data-fabric boundary when a supported live connector is available.
+- **Henry APEX:** authority, deterministic policy, orchestration, provenance, audit and human oversight.
 - **Portfolio Dividend Tracker / wlthy / CloFin:** remain separate systems of record/intelligence; no blind duplication.
 
-## Current state
+### Non-negotiable controls
 
-The connected Links Connect connector available to the runtime currently exposes Stripe and HubSpot resources, not Coinbase. Therefore this implementation adds the Coinbase adapter contract and governed execution boundary without pretending that a live Coinbase account is connected.
+1. NZ-only operating jurisdiction.
+2. Read is the default authority.
+3. `prepare_native_transfer` creates an intent only; it cannot move funds.
+4. There is no live transfer method in this adapter.
+5. Human approval must be a structured approval bound to the exact request before any future execution capability is considered.
+6. Future execution requires a persistent idempotency/execution ledger, deterministic policy outside the model, destination/network validation, transaction simulation, emergency stop, audit evidence and post-execution verification.
+7. Provider responses are reduced to allowlisted projections; raw responses are not propagated by default.
+8. Secrets remain in runtime secret management and never in source control.
+9. Missing compliance evidence fails closed to review/deny.
+10. Production promotion requires human acceptance and explicit production approval.
 
-## Security model
+### NZ privacy-by-design
 
-1. Read operations are the default.
-2. Transactional actions require an explicit APEX policy decision.
-3. High-risk actions require human approval.
-4. Secrets are supplied only through runtime secret management.
-5. Every action receives an idempotency key and produces an audit record.
-6. No private key or Coinbase credential is stored in Links Connect records or source control.
+Where personal information is involved, APEX must assess the Privacy Act 2020 requirements and complete the required privacy assessment before use. Indirect collection must trigger an IPP3A applicability/notification assessment. The Office of the Privacy Commissioner recommends a Privacy Impact Assessment before using AI with personal information and regular updates thereafter.
 
-## Coinbase alignment
+### Activation
 
-AgentKit supports wallet management, onchain actions, multiple networks, and custom action providers. The adapter is intentionally provider-neutral at the APEX boundary so AgentKit can be upgraded independently of the integration fabric.
-
-## Activation requirements
-
-Set CDP credentials in the deployment secret store and wire the adapter to the live Coinbase AgentKit runtime. Do not commit credentials.
+Do not activate live transaction execution from this repository. Any future capability must be introduced through the central APEX execution firewall and pass security, compliance, testing and human-approval gates first.
