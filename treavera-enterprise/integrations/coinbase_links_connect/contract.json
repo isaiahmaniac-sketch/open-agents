@@ -1,0 +1,22 @@
+{
+  "integration": "henry-apex.coinbase.links-connect",
+  "version": "0.1.0",
+  "provider": "coinbase",
+  "fabric": "links-connect",
+  "system_of_record": "coinbase",
+  "apex_responsibilities": ["authority", "policy", "orchestration", "provenance", "audit"],
+  "default_mode": "read",
+  "operations": {
+    "get_wallet_details": {"risk": "low", "mode": "read"},
+    "get_balance": {"risk": "low", "mode": "read"},
+    "native_transfer": {"risk": "high", "mode": "execute", "human_approval": true}
+  },
+  "financial_projections": {
+    "portfolio_dividend_tracker": "reference_only",
+    "wlthy": "reference_only",
+    "clofin": "reference_only"
+  },
+  "secret_policy": "runtime_secret_store_only",
+  "idempotency": "sha256-canonical-request",
+  "audit": "required"
+}
